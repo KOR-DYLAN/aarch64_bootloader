@@ -1,0 +1,16 @@
+# ================================================================
+#                             ARM
+# ================================================================
+# set arm arch version
+ifeq ($(CONFIG_ARM_ARCH_MINOR),0)
+	ccflags-$(CONFIG_ARCH_ARM) += -march=arm$(CONFIG_ARM_ARCH_MAJOR)-a
+else
+	ccflags-$(CONFIG_ARCH_ARM) += -march=arm$(CONFIG_ARM_ARCH_MAJOR).$(CONFIG_ARM_ARCH_MINOR)-a
+endif
+
+# set arm instruction set
+ifeq ($(CONFIG_INSTRUCTION_SET),A32)
+	ccflags += -marm
+else ifeq ($(CONFIG_INSTRUCTION_SET),T32)
+	ccflags += -mthumb
+endif

@@ -1,0 +1,9 @@
+# build type
+ifeq ($(CONFIG_BUILD_TYPE_DEBUG),y)
+	asflags-y += -O0 -g -Wa,-gdwarf-4
+	ccflags-y += -O0 -g -gdwarf-4
+	cxxflags-y += -O0 -g -gdwarf-4
+else
+	ccflags-y += -O2
+	cxxflags-y += -O2
+endif

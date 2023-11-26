@@ -1,0 +1,97 @@
+-include .config
+include $(scriptdir)/Makefile.toolchain
+include $(scriptdir)/Makefile.arch
+include $(scriptdir)/Makefile.warning
+include $(scriptdir)/Makefile.feature
+include $(scriptdir)/Makefile.optimize
+include $(subdir)/Makefile
+
+# common include directories
+common-include-dir += -Iinclude
+asflags-y += $(common-include-dir)
+ppflags-y += $(common-include-dir)
+ccflags-y += $(common-include-dir)
+cxxflags-y += $(common-include-dir)
+
+basedir 	?=
+shipped 	?=
+arch 		:= $(addsuffix .elf,$(arch-y))
+lib 		:= $(addsuffix .a,$(lib-y))
+drv 		:= $(addsuffix .a,$(drv-y))
+dir 		:= $(addsuffix .dir,$(dir-y))
+lds 		:= $(addprefix $(builddir)/$(subdir)/,$(lds-y))
+obj 		:= $(addprefix $(builddir)/$(subdir)/,$(obj-y))
+dep 		:= $(addprefix $(lds),.d) $(obj:.o=.d)
+inc			:= $(addprefix -I$(basedir),$(inc-y)) $(addprefix -I$(basedir),$(sub-inc-y))
+asflags		:= $(asflags-y) $(sub-asflags-y)
+ppflags		:= $(ppflags-y) $(sub-ppflags-y)
+ccflags		:= $(ccflags-y) $(sub-ccflags-y)
+cxxflags	:= $(cxxflags-y) $(sub-cxxflags-y)
+arflags		:= $(arflags-y) $(sub-arflags-y)
+ldflags		:= $(ldflags-y) $(sub-ldflags-y)
+recipe 		:= $(arch) $(lib) $(drv) $(dir) $(obj) $(lds)
+
+ifneq ($(basedir),)
+$(foreach var,$(obj),$(shell echo "obj += $(var)" >> $(basedir)/tmp.txt))
+$(foreach var,$(lds),$(shell echo "lds += $(var)" >> $(basedir)/tmp.txt))
+endif
+
+# make_target macro defines
+# Arguments:
+#   $(1) = target Makefile
+#   $(2) = subdir
+#   $(3) = basedir
+#   $(4) = objects
+#   $(5) = linker_script
+#   $(6) = target
+# Sample:
+#	$(call make_target,file,subdir,basedir,objects,lds,target)
+#   
+define make_target
+$(Q)$(MAKE) -f $(1) subdir=$(2) basedir=$(3) objects=$(4) target=$(5) shipped=$(shipped) sub-inc-y='$(sub-inc-y)' sub-asflags-y='$(sub-asflags-y)' sub-ppflags-y='$(sub-ppflags-y)' sub-ccflags-y='$(sub-ccflags-y)' sub-cxxflags-y='$(sub-cxxflags-y)' sub-arflags-y='$(sub-arflags-y)' sub-ldflags-y='$(sub-ldflags-y)'
+endef
+
+all: $(recipe)
+
+phony += $(arch)
+%.elf:
+	$(Q)mkdir -p $(builddir)/$(subdir)/$(basename $@)
+	$(Q)rm -f $(builddir)/$(subdir)/$(basename $@)/tmp.txt
+# build
+	$(call make_target,$(scriptdir)/Makefile.build,$(subdir)/$(basename $@),$(builddir)/$(subdir)/$(basename $@),,)
+# sort
+	$(Q)sort $(builddir)/$(subdir)/$(basename $@)/tmp.txt > $(builddir)/$(subdir)/$(basename $@)/objects.mk
+	$(Q)rm -f $(builddir)/$(subdir)/$(basename $@)/tmp.txt
+# make elf
+	$(call make_target,$(scriptdir)/Makefile,,,$(builddir)/$(subdir)/$(basename $@)/objects.mk,$(builddir)/$(subdir)/$(basename $@)/$@)
+
+phony += $(lib)
+%.a:
+	$(Q)mkdir -p $(builddir)/$(subdir)/$(basename $@)
+	$(Q)rm -f $(builddir)/$(subdir)/$(basename $@)/tmp.txt
+	$(call make_target,$(scriptdir)/Makefile.build,$(subdir)/$(basename $@),$(builddir)/$(subdir)/$(basename $@),,)
+	$(Q)sort $(builddir)/$(subdir)/$(basename $@)/tmp.txt > $(builddir)/$(subdir)/$(basename $@)/objects.mk
+	$(call make_target,$(scriptdir)/Makefile,,,$(builddir)/$(subdir)/$(basename $@)/objects.mk,$(builddir)/$(subdir)/$(basename $@)/$@)
+
+phony += $(dir)
+%.dir:
+	$(Q)mkdir -p $(builddir)/$(subdir)/$(basename $@)
+	$(call make_target,$(scriptdir)/Makefile.build,$(subdir)/$(basename $@),$(basedir),,)
+
+$(builddir)/%.o: %.c
+	@printf "%-10s $<\n" "[CC]"
+	$(Q)$(CC) $(inc) $(ccflags) -c $< -o $@ -MMD -MP
+
+$(builddir)/%.o: %.cpp
+	@printf "%-10s $<\n" "[CXX]"
+	$(Q)$(CC) $(inc) $(cxxflags) -c $< -o $@ -MMD -MP
+
+$(builddir)/%.o: %.S
+	@printf "%-10s $<\n" "[AS]"
+	$(Q)$(CC) $(inc) -D__ASM__ -x assembler-with-cpp $(asflags) -c $< -o $@ -MMD -MP
+
+$(builddir)/%.lds: %.lds.S
+	@printf "%-10s $<\n" "[CPP]"
+	$(Q)$(CPP) $(inc) $(ppflags) -P -x assembler-with-cpp -D__LINKER__ -Wp,-MD,$@.d -MT $@ -MP -o $@ $<
+
+-include $(dep)
